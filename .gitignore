@@ -1,0 +1,6 @@
+/target
+/dist
+
+# Local notification configs often contain webhook tokens.
+/cfgs/*.yaml
+!/cfgs/example.yaml

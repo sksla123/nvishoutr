@@ -1,0 +1,111 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version tag, for example v0.1.0"
+        required: true
+        default: "v0.1.0"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="${GITHUB_REF_NAME}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.version }}"
+          fi
+
+          version="${tag#v}"
+          manifest="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
+
+          if [ "$version" != "$manifest" ]; then
+            echo "tag version v$version does not match Cargo.toml version $manifest" >&2
+            exit 1
+          fi
+
+          notes="release/v${version}.md"
+          if [ ! -f "$notes" ]; then
+            echo "missing release notes: $notes" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "notes=$notes" >> "$GITHUB_OUTPUT"
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run tests
+        run: cargo test --locked
+
+      - name: Run clippy
+        run: cargo clippy --locked -- -D warnings
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Package release
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${{ steps.version.outputs.version }}"
+          stem="nvishoutr-v${version}-x86_64-unknown-linux-gnu"
+          package_dir="dist/${stem}"
+          archive="dist/${stem}.tar.gz"
+          checksum="${archive}.sha256"
+
+          mkdir -p "$package_dir"
+          cp target/release/nvishoutr "$package_dir/"
+          cp README.md "$package_dir/"
+          cp cfgs/example.yaml "$package_dir/"
+          cp "${{ steps.version.outputs.notes }}" "$package_dir/release.md"
+
+          tar -C dist -czf "$archive" "$stem"
+          sha256sum "$archive" > "$checksum"
+
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+          echo "checksum=$checksum" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: nvishoutr ${{ steps.version.outputs.tag }}
+          body_path: ${{ steps.version.outputs.notes }}
+          target_commitish: ${{ github.sha }}
+          files: |
+            ${{ steps.package.outputs.archive }}
+            ${{ steps.package.outputs.checksum }}
+            ${{ steps.version.outputs.notes }}

@@ -1,0 +1,11 @@
+notify_urls:
+- discord://WEBHOOK_TOKEN@WEBHOOK_ID?splitLines=No
+notify_when: any
+notify_busy_again: true
+poll_interval_seconds: 60
+reminder_interval_minutes: 30
+notification_title: GPU free
+nvidia_smi: nvidia-smi
+ignore:
+  process_patterns: []
+  graphics_users: []
