@@ -134,20 +134,21 @@ CI runs on pushes and pull requests:
 - `cargo test --locked`
 - `cargo clippy --locked -- -D warnings`
 
-Release runs on version tags after the same checks pass. To publish `0.1.0`:
+Release runs on version tags after the same checks pass. To publish or
+redeploy `0.1.0`:
 
 ```bash
 git add .
 git commit -m "Release nvishoutr 0.1.0"
-git tag v0.1.0
 git push origin main
-git push origin v0.1.0
+git tag -f v0.1.0
+git push --force origin v0.1.0
 ```
 
 The release workflow creates:
 
-- `nvishoutr-v0.1.0-x86_64-unknown-linux-gnu.tar.gz`
-- `nvishoutr-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256`
+- `nvishoutr-v0.1.0-linux-x86_64.tar.gz`
+- `nvishoutr-v0.1.0-linux-x86_64.tar.gz.sha256`
 - `release/v0.1.0.md`
 
 The markdown file at [release/v0.1.0.md](release/v0.1.0.md) is used as the
