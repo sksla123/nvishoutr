@@ -24,6 +24,8 @@ struct Args {
     gpus: String,
     #[arg(long, help = "log notifications without sending them")]
     dry_run: bool,
+    #[arg(long, help = "verify GPU detection and test notification URLs, then exit")]
+    verify_config: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -34,10 +36,114 @@ enum Selection {
 
 pub fn run() -> Result<()> {
     let args = Args::parse();
+
+    if args.verify_config {
+        let mut ignored = Vec::new();
+        if args.dry_run {
+            ignored.push("--dry-run");
+        }
+
+        if !ignored.is_empty() {
+            eprintln!(
+                "{} [WARN] --verify-config is active. Ignoring execution options: {}",
+                stamp(),
+                ignored.join(", ")
+            );
+        }
+
+        let config = Config::load(&args.config)?;
+        let notifier = notify::Notifier::new(&config.urls, &config.title)?;
+        let selection = Selection::parse(&args.gpus)?;
+
+        return verify_config(&config, &notifier, &selection);
+    }
+
     let config = Config::load(&args.config)?;
     let notifier = notify::Notifier::new(&config.urls, &config.title)?;
     let selection = Selection::parse(&args.gpus)?;
     watch(config, notifier, selection, args.dry_run)
+}
+
+fn verify_config(
+    config: &Config,
+    notifier: &notify::Notifier,
+    selection: &Selection,
+) -> Result<()> {
+    let host = hostname();
+    println!("{} === nvishoutr Configuration Verification ===", stamp());
+    println!("{} Host: {}", stamp(), host);
+    println!("{} Config path: {}", stamp(), config.path.display());
+    println!("{} Notification title: {}", stamp(), config.title);
+    println!("{} Target mode: {:?}", stamp(), config.mode);
+    println!(
+        "{} Polling interval: {:.1}s / Reminder: {:.1}s",
+        stamp(),
+        config.poll,
+        config.remind
+    );
+
+    // 1. GPU 탐지 및 타겟 매핑 검증
+    println!("{} [1/3] Checking GPU availability with '{}'...", stamp(), config.nvidia);
+    let filter = gpu::Filter::new(&config.ignore, &config.users)?;
+    let selected = poll(config, &filter, selection)?;
+
+    println!(
+        "{} -> Successfully identified {} GPU(s) matching selection '{}':",
+        stamp(),
+        selected.len(),
+        selection.label()
+    );
+    for status in &selected {
+        let mem_str = match (status.gpu.memory_used, status.gpu.memory_total) {
+            (Some(used), Some(total)) => format!("{used}MiB/{total}MiB"),
+            _ => "N/A".to_string(),
+        };
+        let util_str = match (status.gpu.gpu_util, status.gpu.memory_util) {
+            (Some(g), Some(m)) => format!("GPU {g}% | MEM {m}%"),
+            _ => "N/A".to_string(),
+        };
+        println!(
+            "{}    * GPU {}: {} | {} | {} (Active compute: {}, Ignored GUI: {})",
+            stamp(),
+            status.gpu.index,
+            status.gpu.name,
+            mem_str,
+            util_str,
+            status.active.len(),
+            status.ignored.len()
+        );
+    }
+
+    // 2. 웹훅 URL 설정 검증
+    println!("{} [2/3] Checking registered webhook destinations...", stamp());
+    println!("{} -> Found {} destination(s) ready to send.", stamp(), notifier.len());
+
+    // 3. 테스트 알림 전송 검증
+    println!("{} [3/3] Sending test verification notification...", stamp());
+    let mut details = format!("🔔 **[Verification]** Config & GPU Check from `{host}`\n\n");
+    details.push_str(&format!(
+        "• **Watched GPUs:** `{}` (Total: {} detected)\n",
+        selection.label(),
+        selected.len()
+    ));
+    details.push_str(&format!("• **Trigger Mode:** `notify_when: {:?}`\n", config.mode));
+    details.push_str("• **Current Status:**\n");
+    for s in &selected {
+        details.push_str(&format!(
+            "  - GPU `{}`: {} (Active processes: {})\n",
+            s.gpu.index,
+            s.gpu.name,
+            s.active.len()
+        ));
+    }
+
+    notifier
+        .send(&details)
+        .context("Failed to deliver test notification to webhook(s)")?;
+
+    println!("{} -> All notifications delivered successfully.", stamp());
+    println!("{} === Verification Completed: All systems OK ===", stamp());
+    Ok(())
 }
 
 fn watch(
