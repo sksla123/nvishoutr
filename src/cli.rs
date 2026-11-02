@@ -205,7 +205,9 @@ fn watch(
         let actions = engine.evaluate(&selected, Instant::now());
         for action in actions {
             screen.close();
-            dispatch(&notifier, &selected, &action, &host, dry)?;
+            if let Err(error) = dispatch(&notifier, &selected, &action, &host, dry) {
+                eprintln!("{} error: {error:#}", stamp());
+            }
         }
 
         thread::sleep(Duration::from_secs_f64(config.poll));
