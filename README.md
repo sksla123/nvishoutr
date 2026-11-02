@@ -21,7 +21,8 @@ multiple destinations such as Discord, Slack, or a generic webhook.
 - Send reminder notifications while a GPU stays free
 - Send a busy-again notification when a previously free GPU is taken
 - Keep Discord markdown tables and code blocks in a single message
-- Minimal CLI: `--config`, `--gpus`, and `--dry-run`
+- Config and webhook verification before running (`--verify-config`)
+- Minimal CLI: `--config`, `--gpus`, `--dry-run`, and `--verify-config`
 
 ## Install
 
@@ -35,6 +36,12 @@ Run the built binary:
 
 ```bash
 ./target/release/nvishoutr --config cfgs/example.yaml --gpus all
+```
+
+Verify your configuration and test notifications before watching:
+
+```bash
+./target/release/nvishoutr --config cfgs/example.yaml --gpus all --verify-config
 ```
 
 Or run directly with Cargo:
@@ -91,16 +98,28 @@ free becomes busy again before the next reminder.
 ## CLI
 
 ```bash
-nvishoutr --config <PATH> --gpus <all|GPU_LIST> [--dry-run]
+nvishoutr --config <PATH> --gpus <all|GPU_LIST> [--dry-run] [--verify-config]
 ```
 
 Examples:
 
 ```bash
+# Verify configuration, target GPUs, and webhook connectivity then exit
+nvishoutr --config cfgs/my-server.yaml --gpus all --verify-config
+
+# Watch all GPUs on the host
 nvishoutr --config cfgs/my-server.yaml --gpus all
+
+# Watch specific GPUs
 nvishoutr --config cfgs/my-server.yaml --gpus 0,1,3
+
+# Dry run mode (logs notifications without sending)
 nvishoutr --config cfgs/my-server.yaml --gpus 0 --dry-run
 ```
+
+> **Note:** When `--verify-config` is supplied, daemon execution is bypassed.
+> If other runtime flags such as `--dry-run` are passed alongside
+> `--verify-config`, a warning will be logged and those flags will be ignored.
 
 ## Notification Shape
 
