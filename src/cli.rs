@@ -24,7 +24,10 @@ struct Args {
     gpus: String,
     #[arg(long, help = "log notifications without sending them")]
     dry_run: bool,
-    #[arg(long, help = "verify GPU detection and test notification URLs, then exit")]
+    #[arg(
+        long,
+        help = "verify GPU detection and test notification URLs, then exit"
+    )]
     verify_config: bool,
 }
 
@@ -83,7 +86,11 @@ fn verify_config(
     );
 
     // 1. GPU 탐지 및 타겟 매핑 검증
-    println!("{} [1/3] Checking GPU availability with '{}'...", stamp(), config.nvidia);
+    println!(
+        "{} [1/3] Checking GPU availability with '{}'...",
+        stamp(),
+        config.nvidia
+    );
     let filter = gpu::Filter::new(&config.ignore, &config.users)?;
     let selected = poll(config, &filter, selection)?;
 
@@ -115,18 +122,31 @@ fn verify_config(
     }
 
     // 2. 웹훅 URL 설정 검증
-    println!("{} [2/3] Checking registered webhook destinations...", stamp());
-    println!("{} -> Found {} destination(s) ready to send.", stamp(), notifier.len());
+    println!(
+        "{} [2/3] Checking registered webhook destinations...",
+        stamp()
+    );
+    println!(
+        "{} -> Found {} destination(s) ready to send.",
+        stamp(),
+        notifier.len()
+    );
 
     // 3. 테스트 알림 전송 검증
-    println!("{} [3/3] Sending test verification notification...", stamp());
+    println!(
+        "{} [3/3] Sending test verification notification...",
+        stamp()
+    );
     let mut details = format!("🔔 **[Verification]** Config & GPU Check from `{host}`\n\n");
     details.push_str(&format!(
         "• **Watched GPUs:** `{}` (Total: {} detected)\n",
         selection.label(),
         selected.len()
     ));
-    details.push_str(&format!("• **Trigger Mode:** `notify_when: {:?}`\n", config.mode));
+    details.push_str(&format!(
+        "• **Trigger Mode:** `notify_when: {:?}`\n",
+        config.mode
+    ));
     details.push_str("• **Current Status:**\n");
     for s in &selected {
         details.push_str(&format!(
