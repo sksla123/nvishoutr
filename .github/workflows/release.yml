@@ -25,9 +25,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install musl tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
+          targets: x86_64-unknown-linux-musl
           components: rustfmt, clippy
 
       - name: Cache Cargo
@@ -71,8 +77,8 @@ jobs:
       - name: Run clippy
         run: cargo clippy --locked -- -D warnings
 
-      - name: Build release binary
-        run: cargo build --release --locked
+      - name: Build static release binary (musl)
+        run: cargo build --release --target x86_64-unknown-linux-musl --locked
 
       - name: Package release
         id: package
@@ -87,7 +93,7 @@ jobs:
           checksum="${archive}.sha256"
 
           mkdir -p "$package_dir"
-          cp target/release/nvishoutr "$package_dir/"
+          cp target/x86_64-unknown-linux-musl/release/nvishoutr "$package_dir/"
           cp README.md "$package_dir/"
           cp cfgs/example.yaml "$package_dir/"
           cp "${{ steps.version.outputs.notes }}" "$package_dir/release.md"
