@@ -12,7 +12,10 @@ use crate::state::{Action, Engine};
 use crate::{clock, notify, text};
 
 #[derive(Debug, Parser)]
-#[command(about = "Watch shared NVIDIA GPUs and notify when one becomes available.")]
+#[command(
+    version,
+    about = "Watch shared NVIDIA GPUs and notify when one becomes available."
+)]
 struct Args {
     #[arg(long, default_value = "config.yaml", help = "YAML config path")]
     config: PathBuf,
