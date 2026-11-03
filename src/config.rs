@@ -20,6 +20,8 @@ pub struct Config {
     pub remind: f64,
     pub title: String,
     pub nvidia: String,
+    pub retry_count: usize,
+    pub retry_delay: f64,
     pub ignore: Vec<String>,
     pub users: Vec<String>,
 }
@@ -34,6 +36,8 @@ struct Raw {
     reminder_interval_minutes: Option<f64>,
     notification_title: Option<String>,
     nvidia_smi: Option<String>,
+    notify_retry_count: Option<usize>,
+    notify_retry_delay_seconds: Option<f64>,
     ignore: Option<Ignore>,
 }
 
@@ -61,6 +65,11 @@ impl Config {
             raw.reminder_interval_minutes.unwrap_or(30.0),
             "reminder_interval_minutes",
         )? * 60.0;
+        let retry_count = raw.notify_retry_count.unwrap_or(3);
+        let retry_delay = positive(
+            raw.notify_retry_delay_seconds.unwrap_or(2.0),
+            "notify_retry_delay_seconds",
+        )?;
         let ignore = raw.ignore.unwrap_or_default();
 
         Ok(Self {
@@ -72,6 +81,8 @@ impl Config {
             remind,
             title: clean(raw.notification_title).unwrap_or_else(|| "GPU free".to_string()),
             nvidia: clean(raw.nvidia_smi).unwrap_or_else(|| "nvidia-smi".to_string()),
+            retry_count,
+            retry_delay,
             ignore: clean_vec(ignore.process_patterns.unwrap_or_default()),
             users: clean_vec(ignore.graphics_users.unwrap_or_default()),
         })

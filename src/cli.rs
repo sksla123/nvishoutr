@@ -58,14 +58,24 @@ pub fn run() -> Result<()> {
         }
 
         let config = Config::load(&args.config)?;
-        let notifier = notify::Notifier::new(&config.urls, &config.title)?;
+        let notifier = notify::Notifier::new(
+            &config.urls,
+            &config.title,
+            config.retry_count,
+            config.retry_delay,
+        )?;
         let selection = Selection::parse(&args.gpus)?;
 
         return verify_config(&config, &notifier, &selection);
     }
 
     let config = Config::load(&args.config)?;
-    let notifier = notify::Notifier::new(&config.urls, &config.title)?;
+    let notifier = notify::Notifier::new(
+        &config.urls,
+        &config.title,
+        config.retry_count,
+        config.retry_delay,
+    )?;
     let selection = Selection::parse(&args.gpus)?;
     watch(config, notifier, selection, args.dry_run)
 }

@@ -9,10 +9,12 @@ pub struct Notifier {
     runtime: Runtime,
     params: Params,
     labels: Vec<String>,
+    retry_count: usize,
+    retry_delay: f64,
 }
 
 impl Notifier {
-    pub fn new(urls: &[String], title: &str) -> Result<Self> {
+    pub fn new(urls: &[String], title: &str, retry_count: usize, retry_delay: f64) -> Result<Self> {
         let urls = urls.iter().map(|url| prepare(url)).collect::<Vec<_>>();
 
         for (index, url) in urls.iter().enumerate() {
@@ -40,6 +42,8 @@ impl Notifier {
             runtime,
             params,
             labels,
+            retry_count,
+            retry_delay,
         })
     }
 
@@ -48,28 +52,37 @@ impl Notifier {
     }
 
     pub fn send(&self, message: &str) -> Result<()> {
-        let results = self
-            .runtime
-            .block_on(self.sender.send(&self.http, message, &self.params));
-        let failures = results
-            .into_iter()
-            .enumerate()
-            .filter_map(|(index, result)| {
-                result
-                    .err()
-                    .map(|error| format!("{}: {error}", self.labels[index]))
-            })
-            .collect::<Vec<_>>();
+        let mut attempts = 0;
+        loop {
+            let results =
+                self.runtime
+                    .block_on(self.sender.send(&self.http, message, &self.params));
+            let failures = results
+                .into_iter()
+                .enumerate()
+                .filter_map(|(index, result)| {
+                    result
+                        .err()
+                        .map(|error| format!("{}: {error}", self.labels[index]))
+                })
+                .collect::<Vec<_>>();
 
-        if failures.is_empty() {
-            return Ok(());
+            if failures.is_empty() {
+                return Ok(());
+            }
+
+            if attempts >= self.retry_count {
+                bail!(
+                    "{} notification destination(s) failed after {} retries: {}",
+                    failures.len(),
+                    self.retry_count,
+                    failures.join("; ")
+                );
+            }
+
+            attempts += 1;
+            std::thread::sleep(std::time::Duration::from_secs_f64(self.retry_delay));
         }
-
-        bail!(
-            "{} notification destination(s) failed: {}",
-            failures.len(),
-            failures.join("; ")
-        );
     }
 }
 
@@ -147,7 +160,7 @@ mod tests {
             "generic+https://example.com/webhook?template=json".to_string(),
         ];
 
-        let notifier = Notifier::new(&urls, "GPU free").unwrap();
+        let notifier = Notifier::new(&urls, "GPU free", 3, 2.0).unwrap();
 
         assert_eq!(notifier.len(), 2);
     }
@@ -190,7 +203,7 @@ mod tests {
     fn rejects_unsupported_urls() {
         let urls = vec!["mailto://user:pass@example.com".to_string()];
 
-        assert!(Notifier::new(&urls, "GPU free").is_err());
+        assert!(Notifier::new(&urls, "GPU free", 3, 2.0).is_err());
     }
 
     #[test]
