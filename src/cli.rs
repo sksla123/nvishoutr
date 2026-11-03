@@ -190,6 +190,14 @@ fn watch(
     let mut screen = Screen::new();
     let host = hostname();
 
+    // 1. 종료 시그널(Ctrl+C / SIGTERM) 플래그 설정
+    let running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let r = running.clone();
+    ctrlc::set_handler(move || {
+        r.store(false, std::sync::atomic::Ordering::SeqCst);
+    })
+    .context("Error setting Ctrl-C handler")?;
+
     println!(
         "{} watching gpus={} poll={:.1}s remind={:.1}s config={}",
         stamp(),
@@ -199,13 +207,30 @@ fn watch(
         config.path.display(),
     );
 
-    loop {
+    // 2. 시작 알림 발송
+    if !dry {
+        let startup_msg = format!(
+            "🟢 Started GPU watching on host `{host}` (mode: {:?}, GPUs: {})",
+            config.mode,
+            selection.label()
+        );
+        if let Err(error) = notifier.send(&startup_msg) {
+            eprintln!("{} failed to send startup notification: {error:#}", stamp());
+        } else {
+            eprintln!("{} startup notification sent", stamp());
+        }
+    }
+
+    // 3. 메인 감시 루프
+    while running.load(std::sync::atomic::Ordering::SeqCst) {
         let selected = match poll(&config, &filter, &selection) {
             Ok(selected) => selected,
             Err(error) => {
                 screen.close();
                 println!("{} error {error:#}", stamp());
-                thread::sleep(Duration::from_secs_f64(config.poll));
+                if sleep_interruptible(config.poll, &running) {
+                    break;
+                }
                 continue;
             }
         };
@@ -220,8 +245,47 @@ fn watch(
             }
         }
 
-        thread::sleep(Duration::from_secs_f64(config.poll));
+        if sleep_interruptible(config.poll, &running) {
+            break;
+        }
     }
+
+    // 4. Graceful 종료 알림 발송
+    screen.close();
+    println!("\n{} shutdown signal received, cleaning up...", stamp());
+
+    if !dry {
+        let shutdown_msg = format!(
+            "🛑 Stopped GPU watching on host `{host}` (GPUs: {})",
+            selection.label()
+        );
+        if let Err(error) = notifier.send(&shutdown_msg) {
+            eprintln!(
+                "{} failed to send shutdown notification: {error:#}",
+                stamp()
+            );
+        } else {
+            eprintln!("{} shutdown notification sent", stamp());
+        }
+    }
+
+    println!("{} nvishoutr terminated gracefully", stamp());
+    Ok(())
+}
+
+fn sleep_interruptible(
+    seconds: f64,
+    running: &std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> bool {
+    let interval = Duration::from_millis(100);
+    let total_steps = (seconds * 10.0) as usize;
+    for _ in 0..total_steps {
+        if !running.load(std::sync::atomic::Ordering::SeqCst) {
+            return true;
+        }
+        thread::sleep(interval);
+    }
+    false
 }
 
 fn poll(config: &Config, filter: &gpu::Filter, selection: &Selection) -> Result<Vec<Status>> {
